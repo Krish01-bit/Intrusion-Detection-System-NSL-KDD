@@ -15,7 +15,8 @@ from sklearn.metrics import classification_report
 
 
 
-df=pd.read_csv(r"kdd_train.csv")
+df_train=pd.read_csv(r"kdd_train.csv")
+df_test=pd.read_csv(r"kdd_test.csv")
 # print(df.head())
 # print(df.columns)
 # print(df['labels'].unique())
@@ -31,21 +32,39 @@ attack_map = {
     'buffer_overflow': 'U2R', 'loadmodule': 'U2R', 'perl': 'U2R', 'rootkit': 'U2R',
     'normal': 'Normal'
 }
-df['attack_class'] = df['labels'].map(attack_map)
+# Remove trailing dot if present
+df_train['labels'] = df_train['labels'].str.strip('.')
+df_test['labels'] = df_test['labels'].str.strip('.')
+
+# Apply mapping
+df_train['attack_class'] = df_train['labels'].map(attack_map)
+df_test['attack_class'] = df_test['labels'].map(attack_map)
+
+# Drop any unmapped rows (safety)
+df_train = df_train.dropna(subset=['attack_class'])
+df_test = df_test.dropna(subset=['attack_class'])
+
+
 #print(df['attack_class'].value_counts())
-y = df['attack_class']
-X = df.drop(['labels', 'attack_class'], axis=1)
+y_train = df_train['attack_class']
+X_train = df_train.drop(['labels', 'attack_class'], axis=1)
+
+y_test = df_test['attack_class']
+X_test = df_test.drop(['labels', 'attack_class'], axis=1)
+
 # print("\nFeature matrix shape:", X.shape)
 # print("Target vector shape:", y.shape)
 
 
 categorical_cols = ['protocol_type', 'service', 'flag']
-X_encoded = pd.get_dummies(X, columns=categorical_cols)
+
+X_train = pd.get_dummies(X_train, columns=categorical_cols)
+X_test = pd.get_dummies(X_test, columns=categorical_cols)
+
 # print("Before encoding shape:", X.shape)
 # print("After encoding shape:", X_encoded.shape)
-X_train, X_test, y_train, y_test = train_test_split(
-    X_encoded, y, test_size=0.3, random_state=42, stratify=y
-)
+X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+
 scaler = StandardScaler()
 
 X_train_scaled = scaler.fit_transform(X_train)
@@ -57,8 +76,9 @@ svm_model = SVC(kernel='rbf', C=1.0, gamma='scale')
 print("\nTraining SVM model...")
 svm_model.fit(X_train_scaled, y_train)
 print("SVM training completed.")
-print("\nTesting SVM model...")
 y_pred_svm = svm_model.predict(X_test_scaled)
+print("\nTesting SVM model...")
+
 
 svm_accuracy = accuracy_score(y_test, y_pred_svm)
 print("\nSVM Accuracy:", svm_accuracy)
@@ -83,12 +103,21 @@ plt.savefig("svm_confusion_matrix.png")
 plt.close()
 
 
-rf_model = RandomForestClassifier(n_estimators=200,max_depth=20,class_weight='balanced',random_state=42,n_jobs=-1)
+rf_model = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=20,
+    class_weight='balanced',
+    random_state=42,
+    n_jobs=-1
+)
 print("\nTraining Random Forest model...")
 rf_model.fit(X_train, y_train)
 print("Random Forest training completed.")
 print("\nTesting Random Forest model...")
 y_pred_rf = rf_model.predict(X_test)
+
+
+
 rf_accuracy = accuracy_score(y_test, y_pred_rf)
 print("\nRandom Forest Accuracy:", rf_accuracy)
 cm_rf = confusion_matrix(y_test, y_pred_rf)
@@ -144,7 +173,7 @@ plt.bar(models, accuracies, color=['steelblue', 'orange'])
 plt.title("Model Accuracy Comparison")
 plt.xlabel("Model")
 plt.ylabel("Accuracy")
-plt.ylim(0.98, 1.0)  # zoomed since values are high
+plt.ylim(0.95,0.97)  # zoomed since values are high
 plt.tight_layout()
 
 plt.savefig("accuracy_comparison.png")
